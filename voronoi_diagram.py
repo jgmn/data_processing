@@ -4,13 +4,15 @@ import folium
 from scipy.spatial import Voronoi, voronoi_plot_2d
 from geojson import FeatureCollection, Feature, Polygon
 
-def add_markers(data, coords):
+def add_markers(data):
+    coords = []
     for feature in data['features']:
         description = "califi: "+ feature['properties']['califi'] + " " + "tipoca: "+ feature['properties']['tipoca']
         coordinate = feature['geometry']['coordinates']
         x, y = coordinate[1], coordinate[0]
         folium.Marker([x,y], popup = description).add_to(mapVor)
-        coords.append([x,y])    
+        coords.append([x,y])
+    return coords
 
 def create_voronoi(coords):
     vorJSON = open('voronoi.JSON', 'w')
@@ -22,11 +24,8 @@ def create_voronoi(coords):
     for region in range(len(vor.regions)-1):
         vertice_list = []
         for x in vor.regions[region]:
-            if x == -1:
-                break;
-            else:
-                vertice = vor.vertices[x]
-                vertice = (vertice[1], vertice[0])
+            vertice = vor.vertices[x]
+            vertice = (vertice[1], vertice[0])
             vertice_list.append(vertice)
         polygon = Polygon([vertice_list])
         feature = Feature(geometry=polygon, properties={})
@@ -47,8 +46,7 @@ with open(path_input_file,"r") as input_file:
     data = json.load(input_file)
 
 print('Adding markers to the map...')
-coords = []
-add_markers(data, coords)
+coords = add_markers(data)
 
 print('Creating Voronoi diagram...')
 create_voronoi(coords)
