@@ -11,7 +11,7 @@ def add_markers(data):
         description = "califi: "+ feature['properties']['califi'] + " " + "tipoca: "+ feature['properties']['tipoca']
         coordinate = feature['geometry']['coordinates']
         x, y = coordinate[1], coordinate[0]
-        #folium.Marker([x,y], popup = description).add_to(mapVor)
+        #folium.Marker([x,y], popup = description).add_to(mapVor) 
         coords.append([x,y])
     return coords
 
@@ -46,7 +46,7 @@ def voronoi_finite_polygons_2d(vor, radius=None):
 
     center = vor.points.mean(axis=0)
     if radius is None:
-        radius = vor.points.ptp().max()*2
+        radius = vor.points.ptp().max()
 
     # Construct a map containing all ridges for a given point
     all_ridges = {}
@@ -96,12 +96,12 @@ def voronoi_finite_polygons_2d(vor, radius=None):
         # finish
         new_regions.append(new_region.tolist())
 
-    return new_regions, np.asarray(new_vertices)
+    return new_regions, np.asarray(new_vertices).tolist()
     
 # Main
 print('Creating empty map...')
 valencia = [39.4561165311493, -0.3545661635]
-mapVor = folium.Map(location = valencia, tiles = 'Cartodb Positron', zoom_start = 13)
+mapVor = folium.Map(location = valencia, zoom_start = 13)
 
 print('Reading JSON file...')
 path_input_file = 'calificaciones.JSON'
@@ -116,8 +116,16 @@ print('Creating Voronoi diagram...')
 vor = Voronoi(coords)
 regions, vertices = voronoi_finite_polygons_2d(vor)
 
-points = np.array(coords)
+print("regiones")
+print (regions)
+print("vertices")
+print(vertices)
 
+
+
+
+
+"""
 # colorize
 for region in regions:
     polygon = vertices[region]
@@ -129,12 +137,12 @@ plt.xlim(vor.min_bound[0] - 0.1, vor.max_bound[0] + 0.1)
 plt.ylim(vor.min_bound[1] - 0.1, vor.max_bound[1] + 0.1)
 
 plt.show()
-
-print('Adding Voronoi diagram to the map...')
+"""
+"""print('Adding Voronoi diagram to the map...')
 folium.GeoJson(open('voronoi.JSON'), name='Diagrama de Voronoi').add_to(mapVor)
 folium.LayerControl().add_to(mapVor)
 
 print('Saving map...')
 mapVor.save('valencia.html')
 
-print('Ready')
+print('Ready')"""
