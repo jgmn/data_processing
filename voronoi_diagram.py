@@ -2,6 +2,7 @@ import json
 import folium
 import numpy as np
 import matplotlib.pyplot as plt
+from shapely.geometry import box
 from scipy.spatial import Voronoi, voronoi_plot_2d
 from geojson import FeatureCollection, Feature, Polygon
 
@@ -15,26 +16,22 @@ def add_markers(data):
         coords.append([x,y])
     return coords
 
-"""def create_voronoi(coords):
-    vorJSON = open('voronoi.JSON', 'w')
-    vor = Voronoi(coords)
-    #voronoi_plot_2d(vor)
-    #plt.show()
-    point_voronoi_list = []
+def clip_voronoi(regions, vertices, bounding_box):
     feature_list = []
-    for region in range(len(vor.regions)-1):
+    for region in regions:
         vertice_list = []
-        for x in vor.regions[region]:
-            vertice = vor.vertices[x]
+        for indice in region:
+            vertice = vertices[indice]
             vertice = (vertice[1], vertice[0])
             vertice_list.append(vertice)
         polygon = Polygon([vertice_list])
+        
         feature = Feature(geometry=polygon, properties={})
         feature_list.append(feature)
 
     feature_collection = FeatureCollection(feature_list)
     print (feature_collection, file = vorJSON)
-    vorJSON.close()"""
+    vorJSON.close()
 
 def voronoi_finite_polygons_2d(vor, radius=None):
 
@@ -112,18 +109,10 @@ print('Adding markers to the map...')
 coords = add_markers(data)
 
 print('Creating Voronoi diagram...')
-#create_voronoi(coords)
 vor = Voronoi(coords)
 regions, vertices = voronoi_finite_polygons_2d(vor)
-
-print("regiones")
-print (regions)
-print("vertices")
-print(vertices)
-
-
-
-
+bounding_box = box()
+clip_voronoi(regions, vertices, bounding_box)
 
 """
 # colorize
