@@ -1,5 +1,6 @@
 import json
 import folium
+#import matplotlib.pyplot as plt
 from scipy.spatial import Voronoi, voronoi_plot_2d
 from geojson import FeatureCollection, Feature, Polygon
 
@@ -17,7 +18,9 @@ def create_voronoi(coords):
     vorJSON = open('voronoi.JSON', 'w')
     feature_list = []
     vor = Voronoi(coords)
-    for region in vor.regions
+    #voronoi_plot_2d(vor)
+    #plt.show()
+    for region in vor.regions:
         vertice_list = []
         for indice in region:
             vertice = vor.vertices[indice]
