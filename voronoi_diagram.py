@@ -1,6 +1,5 @@
 import json
 import folium
-#import matplotlib.pyplot as plt
 from scipy.spatial import Voronoi, voronoi_plot_2d
 from geojson import FeatureCollection, Feature, Polygon
 
@@ -16,15 +15,12 @@ def add_markers(data):
 
 def create_voronoi(coords):
     vorJSON = open('voronoi.JSON', 'w')
-    vor = Voronoi(coords)
-    #voronoi_plot_2d(vor)
-    #plt.show()
-    point_voronoi_list = []
     feature_list = []
-    for region in range(len(vor.regions)-1):
+    vor = Voronoi(coords)
+    for region in vor.regions
         vertice_list = []
-        for x in vor.regions[region]:
-            vertice = vor.vertices[x]
+        for indice in region:
+            vertice = vor.vertices[indice]
             vertice = (vertice[1], vertice[0])
             vertice_list.append(vertice)
         polygon = Polygon([vertice_list])
@@ -38,7 +34,7 @@ def create_voronoi(coords):
 # Main
 print('Creating empty map...')
 valencia = [39.4561165311493, -0.3545661635]
-mapVor = folium.Map(location = valencia, tiles = 'Cartodb Positron', zoom_start = 13)
+mapVor = folium.Map(location = valencia, zoom_start = 13)
 
 print('Reading JSON file...')
 path_input_file = 'calificaciones.JSON'
