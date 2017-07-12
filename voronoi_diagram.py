@@ -1,12 +1,20 @@
 import json
 import folium
 import numpy as np
-import matplotlib.pyplot as plt
 from scipy.spatial import Voronoi
-from shapely.geometry import Polygon
-from geojson import FeatureCollection, Feature, Polygon as polyjson
+from shapely.geometry import Polygon, Point
+from geojson import FeatureCollection, Feature, Polygon as PolyJson
 
-def voronoi_finite_polygons_2d(vor, radius=None):
+def voronoi_finite_polygons(vor, radius = None):
+#------------------------VORONOI_FINITE_POLYGONS--------------------------#
+# DESCRIPCIÓN: Reconstruye las regiones infinitas del diagrama de Voronoi #
+#              a regiones finitas.                                        #
+# PARÁMETROS:                                                             #
+#   ENTRADA: vor: Diagrama de Voronoi en 2D.                              #
+#            radius: Distancia para los puntos infinitos (opcional).      #
+#   SALIDA:  regions: Indice de vértices en cada región de Voronoi.       #
+#            vertices: Coordenadas para cada vértice de Voronoi.          #
+#-------------------------------------------------------------------------#
     new_regions = []
     new_vertices = vor.vertices.tolist()
 
@@ -54,69 +62,113 @@ def voronoi_finite_polygons_2d(vor, radius=None):
         new_regions.append(new_region.tolist())
 
     return new_regions, np.asarray(new_vertices)
+#-------------------------------------------------------------------------#
 
-def get_coords(cali):
+def get_coords(geojson):
+#------------------------GET_COORDS---------------------------------------#
+# DESCRIPCIÓN: Extrae las coordenadas de un archivo GeoJSON Points.       #
+# PARÁMETROS:                                                             #
+#   ENTRADA: geojson: Archivo GeoJSON.                                    #
+#   SALIDA:  coords: Coordenadas del archivo GeoJSON.                     #
+#-------------------------------------------------------------------------#
     coords = []
-    for feature in cali['features']:
-        #description = "califi: "+ feature['properties']['califi'] + " " + "tipoca: "+ feature['properties']['tipoca']
+    for feature in geojson['features']:
         coordinate = feature['geometry']['coordinates']
         x, y = coordinate[1], coordinate[0]
-        #folium.Marker([x,y], popup = description).add_to(mapVor) 
         coords.append([x,y])
-
     return coords
+#-------------------------------------------------------------------------#
 
 def clip_voronoi(regions, vertices, box):
+#------------------------CLIP_VORONOI-------------------------------------#
+# DESCRIPCIÓN: Recorta el Voronoi con respecto a una caja y genera un     #
+#              archivo Voronoi con los polígonos recortados.              # 
+# PARÁMETROS:                                                             #
+#   ENTRADA: regions: Indice de vértices en cada región de Voronoi.       #
+#            vertices: Coordenadas para cada vértice de Voronoi.          #
+#            box: Caja para recortar el Voronoi.                          #
+#-------------------------------------------------------------------------#
+    vorJSON = open('voronoi.JSON', 'w')
     feature_list = []
     for region in regions:
-        temp = []
+        vertice_list = []
         polygon = vertices[region]
         poly = Polygon(polygon)
         poly = poly.intersection(box)
-        polygon = [(p[1], p[0]) for p in poly.exterior.coords]
-        temp = polyjson([polygon])
+        polygon = [[p[1], p[0]] for p in poly.exterior.coords]
+        vertice_list.append(polygon)
+        temp = PolyJson(vertice_list)
         feature = Feature(geometry=temp, properties={})
         feature_list.append(feature)
 
-    return feature_list
+    feature_collection = FeatureCollection(feature_list)
+    print (feature_collection, file=vorJSON)
+    vorJSON.close()
+#-------------------------------------------------------------------------#
 
-# Main
+def add_pobl(voro, pobl, cali):
+#---------------------------ADD_POBL--------------------------------------#
+# DESCRIPCIÓN: Agrega la población total a las calificaciones.            # 
+# PARÁMETROS:                                                             #
+#   ENTRADA: voro: GeoJSON Voronoi.                                       #
+#            pobl: GeoJSON Población.                                     #
+#            cali: GeoJSON Calificaciones.                                #
+#-------------------------------------------------------------------------#
+    for pobl_feature in pobl['features']:
+        p1 = Polygon(pobl_feature['geometry']['coordinates'][0])
+        for index, voro_feature in enumerate(voro['features']):
+            p2 = Polygon(voro_feature['geometry']['coordinates'][0])
+            if(p1.intersects(p2)):
+                cali['features'][index]['properties']['poblacion'] = cali['features'][index]['properties']['poblacion'] + int(pobl_feature['properties']['pob_total'])
+                print(cali['features'][index]['properties']['poblacion'])                                                                                                              
+
+    with open('calificaciones.JSON', 'w') as output_file:
+        json.dump(cali, output_file, indent=3)      
+               
+# MAIN
 print('Creando el mapa...')
 valencia = [39.4561165311493, -0.3545661635]
 mapVor = folium.Map(location = valencia, zoom_start = 13)
 
+# Puntos de interés
 print('Leyendo archivo calificaciones...')
 path_input_file = 'calificaciones.JSON'
-with open(path_input_file,"r") as input_file:
+with open(path_input_file, "r") as input_file:
     cali = json.load(input_file)
 
-print('Leyendo archivo manzanas_pob...')
-path_input_file = 'manzanas_pob.JSON'
-with open(path_input_file,"r") as input_file:
-    pobl = json.load(input_file)
-
-print('Extrayendo coordenadas...')
+print('Extrayendo puntos de interés...')
 coords = get_coords(cali)
 
 print('Creando Voronoi...')
 vor = Voronoi(coords)
 
-print('Procesando puntos infinitos...')
-regions, vertices = voronoi_finite_polygons_2d(vor)
+print('Reconstruyendo puntos infinitos...')
+regions, vertices = voronoi_finite_polygons(vor)
 
 print ('Recortando Voronoi...')
 min_x = vor.min_bound[0] - 0.1
 max_x = vor.max_bound[0] + 0.1
 min_y = vor.min_bound[1] - 0.1
 max_y = vor.max_bound[1] + 0.1
-box = Polygon([[min_x, min_y], [min_x, max_y], [max_x, max_y], [max_x, min_y]])
-feature_list = clip_voronoi(regions, vertices, box)
 
-print('Escribiendo archivo de salida...')
-vorJSON = open('voronoi.JSON', 'w')
-feature_collection = FeatureCollection(feature_list)
-print (feature_collection, file=vorJSON)
-vorJSON.close()
+box = Polygon([[min_x, min_y], [min_x, max_y], [max_x, max_y], [max_x, min_y]])
+
+clip_voronoi(regions, vertices, box)
+
+# Población
+print('Leyendo archivo manzanas_pob...')
+path_input_file = 'manzanas_pob.JSON'
+with open(path_input_file,"r") as input_file:
+    pobl = json.load(input_file)
+
+# Voronoi
+print('Leyendo archivo voronoi...')
+path_input_file = 'voronoi.JSON'
+with open(path_input_file,"r") as input_file:
+    voro = json.load(input_file)
+
+print('Agregando datos de población...')
+add_pobl(voro, pobl, cali)
 
 print('Agregando Voronoi al mapa...')
 folium.GeoJson(open('voronoi.JSON'), name='Diagrama de Voronoi').add_to(mapVor)
