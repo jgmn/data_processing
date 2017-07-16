@@ -1,14 +1,69 @@
+# -*- coding: utf-8 -*-
+"""
+@author: J. Gerardo Moreno N.
+"""
 import json
 import folium
 import numpy as np
-# import geopandas as gpd
+import geopandas as gpd
 from os import listdir
 from pyproj import Proj, transform
 from scipy.spatial import Voronoi
-from shapely.geometry import Polygon, Point, LineString
+from shapely.geometry import Polygon, Point
 from geojson import FeatureCollection, Feature, Polygon as PolyJson
 
-def voronoi_finite_polygons(vor, radius = None):
+#-----------------------------FILTER_GEOJSON------------------------------#
+# DESCRIPCIÓN: Filtra un GeoJSON por los puntos de interés, calcula el    #
+#              centroide de los polígonos y cambia el formato de coords.  #
+# PARÁMETROS:                                                             #
+#   ENTRADA: data: GeoJSON que se desea filtrar.                          #
+#   SALIDA:  result: GeoJSON filtrado.                                    #
+#            coords: Coordenadas de result.                               #
+#-------------------------------------------------------------------------#
+def filter_geojson(data):
+    inpProj = Proj(init='epsg:25830')
+    outProj = Proj(init='epsg:4326')
+    
+    coords = []
+    
+    result = {}
+    result['type'] = data['type']
+    result['crs'] = data['crs']
+    result['features'] = []
+
+    for feature in data['features']:
+        if ((feature['properties']['califi'] == "EDA" and  feature['properties']['uso'] == "SJL")
+            or (feature['properties']['califi'] == "PID")
+            or (feature['properties']['califi'] == "GTR"  and  feature['properties']['tipoca'] == "4")
+            or (feature['properties']['califi'] == "GSP"  and (feature['properties']['tipoca'] == "4" or feature['properties']['tipoca'] == "3"))
+            or (feature['properties']['califi'] == "TER"  and  feature['properties']['tipoca'] == "3")
+            or (feature['properties']['califi'] == "E/SP" and  feature['properties']['tipoca'] == "1P")):
+            
+            feature['properties']['nombre'] = ""
+            feature['properties']['tiempo_medio'] = 0
+            feature['properties']['poblacion'] = 0
+            feature['properties']['tweets'] = 0
+            feature['properties']['trafico'] = 0
+            
+            del feature['properties']['clase']
+            del feature['properties']['tipouso']
+            del feature['properties']['origen']
+            del feature['properties']['ficha_es']
+            del feature['properties']['ficha_va']
+            
+            polygon = Polygon(feature['geometry']['coordinates'][0])
+            point = polygon.envelope.centroid 
+            x1, y1 = point.x, point.y
+            x2, y2 = transform(inpProj, outProj, x1, y1)
+            coords.append([x2, y2])
+            feature['geometry']['coordinates'] = [x2, y2]
+            feature['geometry']['type'] = "Point"
+            result['features'].append(feature)
+
+    result['crs']['properties']['name'] = "urn:ogc:def:crs:EPSG::4326" 
+    return result, coords
+#-------------------------------------------------------------------------#
+
 #------------------------VORONOI_FINITE_POLYGONS--------------------------#
 # DESCRIPCIÓN: Reconstruye las regiones infinitas del diagrama de Voronoi #
 #              a regiones finitas.                                        #
@@ -18,6 +73,7 @@ def voronoi_finite_polygons(vor, radius = None):
 #   SALIDA:  regions: Indice de vértices en cada región de Voronoi.       #
 #            vertices: Coordenadas para cada vértice de Voronoi.          #
 #-------------------------------------------------------------------------#
+def voronoi_finite_polygons(vor, radius = None):
     new_regions = []
     new_vertices = vor.vertices.tolist()
 
@@ -67,22 +123,6 @@ def voronoi_finite_polygons(vor, radius = None):
     return new_regions, np.asarray(new_vertices)
 #-------------------------------------------------------------------------#
 
-def get_coords(geojson):
-#------------------------GET_COORDS---------------------------------------#
-# DESCRIPCIÓN: Extrae las coordenadas de un archivo GeoJSON Points.       #
-# PARÁMETROS:                                                             #
-#   ENTRADA: geojson: Archivo GeoJSON.                                    #
-#   SALIDA:  coords: Coordenadas del archivo GeoJSON.                     #
-#-------------------------------------------------------------------------#
-    coords = []
-    for feature in geojson['features']:
-        coordinate = feature['geometry']['coordinates']
-        x, y = coordinate[1], coordinate[0]
-        coords.append([x,y])
-    return coords
-#-------------------------------------------------------------------------#
-
-def clip_voronoi(regions, vertices, box):
 #------------------------CLIP_VORONOI-------------------------------------#
 # DESCRIPCIÓN: Recorta el Voronoi con respecto a una caja y genera un     #
 #              archivo Voronoi con los polígonos recortados.              # 
@@ -90,108 +130,93 @@ def clip_voronoi(regions, vertices, box):
 #   ENTRADA: regions: Indice de vértices en cada región de Voronoi.       #
 #            vertices: Coordenadas para cada vértice de Voronoi.          #
 #            box: Caja para recortar el Voronoi.                          #
+#   SALIDA:  voro: GeoJSON Voronoi.                                       #
 #-------------------------------------------------------------------------#
-    vorJSON = open('voronoi.JSON', 'w')
+def clip_voronoi(regions, vertices, box):
     feature_list = []
     for region in regions:
         vertice_list = []
         polygon = vertices[region]
         poly = Polygon(polygon)
         poly = poly.intersection(box)
-        polygon = [[p[1], p[0]] for p in poly.exterior.coords]
+        polygon = [[p[0], p[1]] for p in poly.exterior.coords]
         vertice_list.append(polygon)
         temp = PolyJson(vertice_list)
         feature = Feature(geometry=temp, properties={})
         feature_list.append(feature)
 
     feature_collection = FeatureCollection(feature_list)
-    print (feature_collection, file=vorJSON)
-    vorJSON.close()
+    return feature_collection
 #-------------------------------------------------------------------------#
 
-def add_pobl(voro, pobl, cali):
 #---------------------------ADD_POBL--------------------------------------#
 # DESCRIPCIÓN: Agrega la población total a las calificaciones.            # 
 # PARÁMETROS:                                                             #
-#   ENTRADA: voro: GeoJSON Voronoi.                                       #
-#            pobl: GeoJSON Población.                                     #
-#            cali: GeoJSON Calificaciones.                                #
+#   ENTRADA: voro: GeoDataFrame Voronoi.                                  #
+#            pobl: GeoDataFrame Población.                                #
+#            cali: GeoJson Calificaciones.                                #
 #-------------------------------------------------------------------------#
-    for pobl_feature in pobl['features']:
-        p1 = Polygon(pobl_feature['geometry']['coordinates'][0])
-        for index, voro_feature in enumerate(voro['features']):
-            p2 = Polygon(voro_feature['geometry']['coordinates'][0])
-            if(p1.intersects(p2)):
-                cali['features'][index]['properties']['poblacion'] = cali['features'][index]['properties']['poblacion'] + int(pobl_feature['properties']['pob_total'])
-    return cali
+def add_pobl(pobl, voro, cali):
+    pobl = pobl.to_crs({'init': 'epsg:4326'})
+    voro.crs = pobl.crs 
+    pobl_with_voro = gpd.sjoin(pobl, voro, how="inner", op='intersects')
+        
+    for data in pobl_with_voro.iterrows():
+        cali['features'][data[1][6]]['properties']['poblacion'] = cali['features'][data[1][6]]['properties']['poblacion'] + int(data[1][4])
+  
+    return cali    
 #--------------------------------------------------------------------------#
-               
-def add_tweets(voro, tweets, cali):
+
 #---------------------------ADD_TWEETS-------------------------------------#
 # DESCRIPCIÓN: Agrega la actividad de redes sociales a las calificaciones. # 
 # PARÁMETROS:                                                              #
-#   ENTRADA: voro:   GeoJSON Voronoi.                                      #
-#            tweets: GeoJSON Tweets.                                       #
+#   ENTRADA: tweets: GeoDataFrame Tweets.                                  #
+#            voro:   GeoDataFrame Voronoi.                                 #
 #            cali:   GeoJSON Calificaciones.                               #
-#--------------------------------------------------------------------------#
-    for tweet in tweets:
-        p1 = Point(tweet['coordinates']['coordinates'])
-        for index, voro_feature in enumerate(voro['features']):
-            p2 = Polygon(voro_feature['geometry']['coordinates'][0])
-            if(p1.intersects(p2)):
-                cali['features'][index]['properties']['tweets'] = cali['features'][index]['properties']['tweets'] + 1
+#--------------------------------------------------------------------------#               
+def add_tweets(tweets, voro, cali):    
+    voro.crs = tweets.crs 
+    tweets_with_voro = gpd.sjoin(tweets, voro, how="inner", op='intersects')
+    
+    for data in tweets_with_voro.iterrows():
+        cali['features'][data[1][1]]['properties']['tweets'] = cali['features'][data[1][1]]['properties']['tweets'] + 1
+    
     return cali
 #--------------------------------------------------------------------------#
 
-def add_traffic(voro, cali):
 #---------------------------ADD_TRAFFIC------------------------------------#
 # DESCRIPCIÓN: Agrega el tráfico a las calificaciones.                     # 
 # PARÁMETROS:                                                              #
-#   ENTRADA: voro: GeoJSON Voronoi.                                        #
+#   ENTRADA: traficos: Lista de GeoDataFrames Tráfico.                     # 
+#            voro: GeoDataFrame Voronoi.                                   #
 #            cali: GeoJSON Calificaciones.                                 #
 #--------------------------------------------------------------------------#
-    path_folder = 'traffic_data'
-    for file in listdir(path_folder):
-        with open(path_folder+'/'+file,'r', encoding="utf8") as input_file:
-            data = json.load(input_file)
-
-        traffic = convert_coords(data)
-
-        for traffic_feature in traffic['features']:
-            l1 = LineString(traffic_feature['geometry']['coordinates'])
-            for index, voro_feature in enumerate(voro['features']):
-                p2 = Polygon(voro_feature['geometry']['coordinates'][0])
-                if(l1.intersects(p2)):
-                    cali['features'][index]['properties']['trafico'] = cali['features'][index]['properties']['trafico'] + int(traffic_feature['properties']['lectura'])
-    return cali                                                                                               
+def add_traffic(traficos, voro, cali):
+    for trafico in traficos:
+        trafico = trafico.to_crs({'init': 'epsg:4326'})
+        voro.crs = trafico.crs
+        trafico_with_voro = gpd.sjoin(trafico, voro, how="inner", op='intersects')
+        
+        for data in trafico_with_voro.iterrows():
+            cali['features'][data[1][4]]['properties']['trafico'] = cali['features'][data[1][4]]['properties']['trafico'] + int(data[1][3])    
+    
+    return cali                                                                                          
 #--------------------------------------------------------------------------#
 
-#---------------------------CONVERT_COORDS---------------------------------#
-# DESCRIPCIÓN: Convierte las coordenadas de un archivo GeoJSON.            # 
+#-----------------------------ADD_TIME-------------------------------------#
+# DESCRIPCIÓN: Agrega el tiempo de espera a las calificaciones.            # 
 # PARÁMETROS:                                                              #
-#   ENTRADA: data:   GeoJSON que se desea convertir.                       #
-#   SALIDA:  result: GeoJSON con las nuevas coordenadas.                   #
+#   ENTRADA: tiempo: GeoJSON Tiempo Medio.                                 #
+#            cali:   GeoJSON Calificaciones.                               #
 #--------------------------------------------------------------------------#
-def convert_coords(data):
-    inpProj = Proj(init='epsg:25830')
-    outProj = Proj(init='epsg:4326')
-
-    result = {}
-    result['type'] = data['type']
-    result['crs'] = data['crs']
-    result['features'] = []
-
-    for feature in data['features']:
-        coordinates = []
-        for coordinate in feature['geometry']['coordinates']:
-            x1, y1 = coordinate[0], coordinate[1]
-            x2, y2 = transform(inpProj, outProj, x1, y1)
-            coordinates.append([x2, y2])
-        feature['geometry']['coordinates'] = coordinates
-        result['features'].append(feature)
-
-    result['crs']['properties']['name'] = "urn:ogc:def:crs:EPSG::4326"
-    return result
+def add_time(tiempo, cali):
+    for index, tiempo_feature in enumerate(tiempo['features']):
+        nombre = tiempo_feature['properties']['nombre']
+        tiempo_medio = tiempo_feature['properties']['tiempo']
+        cali['features'][index]['properties']['nombre'] = nombre
+        cali['features'][index]['properties']['tiempo_medio'] = tiempo_medio
+        
+    return cali
 #--------------------------------------------------------------------------#
 
 # MAIN
@@ -201,12 +226,11 @@ mapVor = folium.Map(location = valencia, zoom_start = 13)
 
 # Puntos de interés
 print('Leyendo archivo calificaciones...')
-path_file = 'calificaciones.JSON'
-with open(path_file, 'r') as input_file:
+with open('opendata/calificaciones.JSON', 'r') as input_file:
     cali = json.load(input_file)
 
-print('Extrayendo puntos de interés...')
-coords = get_coords(cali)
+print('Filtrando calificaciones...')
+cali, coords = filter_geojson(cali)
 
 print('Creando Voronoi...')
 vor = Voronoi(coords)
@@ -222,40 +246,52 @@ max_y = vor.max_bound[1] + 0.1
 
 box = Polygon([[min_x, min_y], [min_x, max_y], [max_x, max_y], [max_x, min_y]])
 
-clip_voronoi(regions, vertices, box)
+voro = clip_voronoi(regions, vertices, box)
+
+voro_df = gpd.GeoDataFrame(gpd.GeoSeries(Polygon(v['geometry']['coordinates'][0]) for v in voro['features']), columns=['geometry'])
 
 # Población
 print('Leyendo archivo manzanas_pob...')
-path_file = 'manzanas_pob.JSON'
-with open(path_file,'r') as input_file:
-    pobl = json.load(input_file)
+pobl = gpd.read_file('opendata/manzanas_pob.JSON')
+  
+print('Agregando datos de población...')
+cali = add_pobl(pobl, voro_df, cali)
+
+# Tiempo medio
+print('Leyendo archivo tiempo_medio...')
+with open('opendata/tiempo_medio.JSON','r') as input_file:
+    tiempo = json.load(input_file)
+    
+print('Agregando datos de tiempo medio...')
+cali = add_time(tiempo, cali)
+
+# Tráfico
+print('Leyendo archivos de tráfico...')
+traficos = []
+for filename in listdir('opendata/traffic_data'):
+    traficos.append(gpd.read_file('opendata/traffic_data/'+filename))
+
+print('Agregando datos de tráfico...')
+cali = add_traffic(traficos, voro_df, cali)
 
 # Tweets 
 print('Leyendo archivo valenciatweets...')
-path_file = 'valenciatweets.JSON'
-with open(path_file,'r') as input_file:
+with open('opendata/valenciatweets.JSON','r') as input_file:
     tweets = json.load(input_file)
-    
-# Voronoi
-print('Leyendo archivo voronoi...')
-path_file = 'voronoi.JSON'
-with open(path_file,'r') as input_file:
-    voro = json.load(input_file)
 
-# Procesamiento de datos
-print('Agregando datos de población...')
-cali = add_pobl(voro, pobl, cali)
-
+tweets = gpd.GeoDataFrame(gpd.GeoSeries(Point(t['coordinates']['coordinates']) for t in tweets), columns=['geometry'])
+      
 print('Agregando datos de redes sociales...')
-cali = add_tweets(voro, tweets, cali)
+cali = add_tweets(tweets, voro_df, cali)
 
-print('Agregando datos de tráfico...')
-cali = add_traffic(voro, cali)
-
-print('Guardando caliicaciones...')
-with open('calificaciones.JSON', 'w') as output_file:
+print('Guardando calificaciones...')
+with open('calificaciones_filtrado.JSON', 'w') as output_file:
     json.dump(cali, output_file, indent=3)
-
+    
+print('Guardando voronoi...')
+with open('voronoi.JSON', 'w') as output_file:
+    json.dump(voro, output_file, indent=3)
+    
 print('Agregando Voronoi al mapa...')
 folium.GeoJson(open('voronoi.JSON'), name='Diagrama de Voronoi').add_to(mapVor)
 folium.LayerControl().add_to(mapVor)
