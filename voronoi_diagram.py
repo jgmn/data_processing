@@ -311,12 +311,11 @@ def main():
     
     print('Listo')
 
-# Calcular tiempo de ejecución
-tiempo_inicial = time()
-main()
-tiempo_final = time()
-tiempo_ejecucion = tiempo_final - tiempo_inicial
-print('Tiempo de ejecución: ', '%.2f'% (tiempo_ejecucion/60), 'minutos')
-
-
-
+if __name__ == "__main__":
+    # Calcular tiempo de ejecución
+    tiempo_inicial = time()
+    main()
+    tiempo_final = time()
+    
+    tiempo_ejecucion = tiempo_final - tiempo_inicial
+    print('Tiempo de ejecución: ', '%.2f'% (tiempo_ejecucion/60), 'minutos')
