@@ -6,6 +6,7 @@ import json
 import folium
 import numpy as np
 import geopandas as gpd
+from time import time 
 from os import listdir
 from pyproj import Proj, transform
 from scipy.spatial import Voronoi
@@ -133,6 +134,13 @@ def voronoi_finite_polygons(vor, radius = None):
 #   SALIDA:  voro: GeoJSON Voronoi.                                       #
 #-------------------------------------------------------------------------#
 def clip_voronoi(regions, vertices, box):
+    crs = {
+    "type": "name",
+    "properties": {
+        "name": "urn:ogc:def:crs:EPSG::4326"
+        }
+    }
+    
     feature_list = []
     for region in regions:
         vertice_list = []
@@ -145,7 +153,7 @@ def clip_voronoi(regions, vertices, box):
         feature = Feature(geometry=temp, properties={})
         feature_list.append(feature)
 
-    feature_collection = FeatureCollection(feature_list)
+    feature_collection = FeatureCollection(feature_list, crs=crs)
     return feature_collection
 #-------------------------------------------------------------------------#
 
@@ -158,7 +166,8 @@ def clip_voronoi(regions, vertices, box):
 #-------------------------------------------------------------------------#
 def add_pobl(pobl, voro, cali):
     pobl = pobl.to_crs({'init': 'epsg:4326'})
-    voro.crs = pobl.crs 
+    pobl.crs = {'init' :'epsg:4326'}
+    voro.crs = pobl.crs # Para quitar el warning CRS does not match !
     pobl_with_voro = gpd.sjoin(pobl, voro, how="inner", op='intersects')
         
     for data in pobl_with_voro.iterrows():
@@ -175,7 +184,7 @@ def add_pobl(pobl, voro, cali):
 #            cali:   GeoJSON Calificaciones.                               #
 #--------------------------------------------------------------------------#               
 def add_tweets(tweets, voro, cali):    
-    voro.crs = tweets.crs 
+    voro.crs = tweets.crs # Para quitar el warning CRS does not match !
     tweets_with_voro = gpd.sjoin(tweets, voro, how="inner", op='intersects')
     
     for data in tweets_with_voro.iterrows():
@@ -194,7 +203,8 @@ def add_tweets(tweets, voro, cali):
 def add_traffic(traficos, voro, cali):
     for trafico in traficos:
         trafico = trafico.to_crs({'init': 'epsg:4326'})
-        voro.crs = trafico.crs
+        trafico.crs = {'init' :'epsg:4326'}
+        voro.crs = trafico.crs # Para quitar el warning CRS does not match !
         trafico_with_voro = gpd.sjoin(trafico, voro, how="inner", op='intersects')
         
         for data in trafico_with_voro.iterrows():
@@ -219,84 +229,94 @@ def add_time(tiempo, cali):
     return cali
 #--------------------------------------------------------------------------#
 
-# MAIN
-print('Creando el mapa...')
-valencia = [39.4561165311493, -0.3545661635]
-mapVor = folium.Map(location = valencia, zoom_start = 13)
-
-# Puntos de interés
-print('Leyendo archivo calificaciones...')
-with open('opendata/calificaciones.JSON', 'r') as input_file:
-    cali = json.load(input_file)
-
-print('Filtrando calificaciones...')
-cali, coords = filter_geojson(cali)
-
-print('Creando Voronoi...')
-vor = Voronoi(coords)
-
-print('Reconstruyendo puntos infinitos...')
-regions, vertices = voronoi_finite_polygons(vor)
-
-print ('Recortando Voronoi...')
-min_x = vor.min_bound[0] - 0.1
-max_x = vor.max_bound[0] + 0.1
-min_y = vor.min_bound[1] - 0.1
-max_y = vor.max_bound[1] + 0.1
-
-box = Polygon([[min_x, min_y], [min_x, max_y], [max_x, max_y], [max_x, min_y]])
-
-voro = clip_voronoi(regions, vertices, box)
-
-voro_df = gpd.GeoDataFrame(gpd.GeoSeries(Polygon(v['geometry']['coordinates'][0]) for v in voro['features']), columns=['geometry'])
-
-# Población
-print('Leyendo archivo manzanas_pob...')
-pobl = gpd.read_file('opendata/manzanas_pob.JSON')
-  
-print('Agregando datos de población...')
-cali = add_pobl(pobl, voro_df, cali)
-
-# Tiempo medio
-print('Leyendo archivo tiempo_medio...')
-with open('opendata/tiempo_medio.JSON','r') as input_file:
-    tiempo = json.load(input_file)
+def main():
+    print('Creando el mapa...')
+    valencia = [39.4561165311493, -0.3545661635]
+    mapVor = folium.Map(location = valencia, zoom_start = 13)
     
-print('Agregando datos de tiempo medio...')
-cali = add_time(tiempo, cali)
-
-# Tráfico
-print('Leyendo archivos de tráfico...')
-traficos = []
-for filename in listdir('opendata/traffic_data'):
-    traficos.append(gpd.read_file('opendata/traffic_data/'+filename))
-
-print('Agregando datos de tráfico...')
-cali = add_traffic(traficos, voro_df, cali)
-
-# Tweets 
-print('Leyendo archivo valenciatweets...')
-with open('opendata/valenciatweets.JSON','r') as input_file:
-    tweets = json.load(input_file)
-
-tweets = gpd.GeoDataFrame(gpd.GeoSeries(Point(t['coordinates']['coordinates']) for t in tweets), columns=['geometry'])
+    # Puntos de interés
+    print('Leyendo archivo calificaciones...')
+    with open('opendata/calificaciones.JSON', 'r') as input_file:
+        cali = json.load(input_file)
+    
+    print('Filtrando calificaciones...')
+    cali, coords = filter_geojson(cali)
+    
+    print('Creando Voronoi...')
+    vor = Voronoi(coords)
+    
+    print('Reconstruyendo puntos infinitos...')
+    regions, vertices = voronoi_finite_polygons(vor)
+    
+    print ('Recortando Voronoi...')
+    min_x = vor.min_bound[0] - 0.1
+    max_x = vor.max_bound[0] + 0.1
+    min_y = vor.min_bound[1] - 0.1
+    max_y = vor.max_bound[1] + 0.1
+    
+    box = Polygon([[min_x, min_y], [min_x, max_y], [max_x, max_y], [max_x, min_y]])
+    
+    voro = clip_voronoi(regions, vertices, box)
+    
+    voro_df = gpd.GeoDataFrame(gpd.GeoSeries(Polygon(v['geometry']['coordinates'][0]) for v in voro['features']), columns=['geometry'])
+    
+    # Población
+    print('Leyendo archivo manzanas_pob...')
+    pobl = gpd.read_file('opendata/manzanas_pob.JSON')
       
-print('Agregando datos de redes sociales...')
-cali = add_tweets(tweets, voro_df, cali)
-
-print('Guardando calificaciones...')
-with open('calificaciones_filtrado.JSON', 'w') as output_file:
-    json.dump(cali, output_file, indent=3)
+    print('Agregando datos de población...')
+    cali = add_pobl(pobl, voro_df, cali)
     
-print('Guardando voronoi...')
-with open('voronoi.JSON', 'w') as output_file:
-    json.dump(voro, output_file, indent=3)
+    # Tiempo medio
+    print('Leyendo archivo tiempo_medio...')
+    with open('opendata/tiempo_medio.JSON','r') as input_file:
+        tiempo = json.load(input_file)
+        
+    print('Agregando datos de tiempo medio...')
+    cali = add_time(tiempo, cali)
     
-print('Agregando Voronoi al mapa...')
-folium.GeoJson(open('voronoi.JSON'), name='Diagrama de Voronoi').add_to(mapVor)
-folium.LayerControl().add_to(mapVor)
+    # Tráfico
+    print('Leyendo archivos de tráfico...')
+    traficos = []
+    for filename in listdir('opendata/traffic_data'):
+        traficos.append(gpd.read_file('opendata/traffic_data/'+filename))
+    
+    print('Agregando datos de tráfico...')
+    cali = add_traffic(traficos, voro_df, cali)
+    
+    # Tweets 
+    print('Leyendo archivo valenciatweets...')
+    with open('opendata/valenciatweets.JSON','r') as input_file:
+        tweets = json.load(input_file)
+    
+    tweets = gpd.GeoDataFrame(gpd.GeoSeries(Point(t['coordinates']['coordinates']) for t in tweets), columns=['geometry'])
+          
+    print('Agregando datos de redes sociales...')
+    cali = add_tweets(tweets, voro_df, cali)
+    
+    print('Guardando calificaciones...')
+    with open('calificaciones_filtrado.JSON', 'w') as output_file:
+        json.dump(cali, output_file, indent=3)
+        
+    print('Guardando voronoi...')
+    with open('voronoi.JSON', 'w') as output_file:
+        json.dump(voro, output_file, indent=3)
+        
+    print('Agregando Voronoi al mapa...')
+    folium.GeoJson(open('voronoi.JSON'), name='Diagrama de Voronoi').add_to(mapVor)
+    folium.LayerControl().add_to(mapVor)
+    
+    print('Guardando mapa...')
+    mapVor.save('valencia.html')
+    
+    print('Listo')
 
-print('Guardando mapa...')
-mapVor.save('valencia.html')
+# Calcular tiempo de ejecución
+tiempo_inicial = time()
+main()
+tiempo_final = time()
+tiempo_ejecucion = tiempo_final - tiempo_inicial
+print('Tiempo de ejecución: ', '%.2f'% (tiempo_ejecucion/60), 'minutos')
 
-print('Listo')
+
+
