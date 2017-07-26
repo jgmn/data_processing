@@ -3,9 +3,9 @@
 @author: J. Gerardo Moreno N.
 """
 import json
-import folium
 import numpy as np
 import geopandas as gpd
+from folium import Map, GeoJson
 from time import time 
 from os import listdir
 from pyproj import Proj, transform
@@ -125,8 +125,7 @@ def voronoi_finite_polygons(vor, radius = None):
 #-------------------------------------------------------------------------#
 
 #------------------------CLIP_VORONOI-------------------------------------#
-# DESCRIPCIÓN: Recorta el Voronoi con respecto a una caja y genera un     #
-#              archivo Voronoi con los polígonos recortados.              # 
+# DESCRIPCIÓN: Recorta el Voronoi con respecto a una caja.                # 
 # PARÁMETROS:                                                             #
 #   ENTRADA: regions: Indice de vértices en cada región de Voronoi.       #
 #            vertices: Coordenadas para cada vértice de Voronoi.          #
@@ -196,7 +195,7 @@ def add_tweets(tweets_df, voro_df, cali):
 #---------------------------ADD_TRAFFIC------------------------------------#
 # DESCRIPCIÓN: Agrega el tráfico a las calificaciones.                     # 
 # PARÁMETROS:                                                              #
-#   ENTRADA: traficos: Lista de GeoDataFrames Tráfico.                     # 
+#   ENTRADA: traficos: Lista de GeoDataFrames de tráfico.                  # 
 #            voro: GeoDataFrame Voronoi.                                   #
 #            cali: GeoJSON Calificaciones.                                 #
 #--------------------------------------------------------------------------#
@@ -299,18 +298,13 @@ def main():
     with open('voronoi.json', 'w') as output_file:
         json.dump(voro, output_file, indent=3)
         
-    # Generar el mapa
-    print('Creando el mapa...')
+    # Visualizar la información en mapa web
+    print('Generando mapa web...')
     valencia = [39.4561165311493, -0.3545661635]
-    mapVor = folium.Map(location = valencia, tiles='OpenStreetMap', zoom_start = 13)
-    
-    print('Agregando información al mapa...')
-    folium.GeoJson(open('voronoi.json'), name='Diagrama de Voronoi').add_to(mapVor)
-    folium.GeoJson(open('puntos_de_interes.json'), name='Puntos de Interés').add_to(mapVor)
-    folium.LayerControl().add_to(mapVor)
-    
-    print('Guardando mapa...')
-    mapVor.save('valencia.html')
+    mapa = Map(location = valencia, tiles = 'OpenStreetMap', zoom_start = 13)
+    GeoJson(open('voronoi.json'), name = 'Diagrama de Voronoi').add_to(mapa)
+    GeoJson(open('puntos_de_interes.json'), name='Puntos de Interés').add_to(mapa)
+    mapa.save('valencia.html')
     
     print('Listo')
 
