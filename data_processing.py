@@ -5,7 +5,7 @@
 import json
 import numpy as np
 import geopandas as gpd
-from folium import Map, GeoJson
+from folium import Map, GeoJson, LayerControl
 from time import time 
 from os import listdir
 from pyproj import Proj, transform
@@ -21,18 +21,18 @@ from geojson import FeatureCollection, Feature, Polygon as PolyJson
 #   SALIDA:  result: GeoJSON filtrado.                                    #
 #            coords: Coordenadas de result.                               #
 #-------------------------------------------------------------------------#
-def filter_geojson(data):
+def filter_geojson(cali):
     inpProj = Proj(init='epsg:25830')
     outProj = Proj(init='epsg:4326')
     
     coords = []
     
     result = {}
-    result['type'] = data['type']
-    result['crs'] = data['crs']
+    result['type'] = cali['type']
+    result['crs'] = cali['crs']
     result['features'] = []
 
-    for feature in data['features']:
+    for feature in cali['features']:
         if ((feature['properties']['califi'] == "EDA" and  feature['properties']['uso'] == "SJL")
             or (feature['properties']['califi'] == "PID")
             or (feature['properties']['califi'] == "GTR"  and  feature['properties']['tipoca'] == "4")
@@ -41,7 +41,7 @@ def filter_geojson(data):
             or (feature['properties']['califi'] == "E/SP" and  feature['properties']['tipoca'] == "1P")):
             
             feature['properties']['nombre'] = ""
-            feature['properties']['tiempo_medio'] = 0
+            feature['properties']['tiempo'] = 0
             feature['properties']['poblacion'] = 0
             feature['properties']['tweets'] = 0
             feature['properties']['trafico'] = 0
@@ -215,15 +215,15 @@ def add_traffic(traficos_df, voro_df, cali):
 #-----------------------------ADD_TIME-------------------------------------#
 # DESCRIPCIÓN: Agrega el tiempo de espera a las calificaciones.            # 
 # PARÁMETROS:                                                              #
-#   ENTRADA: tiempo: GeoJSON Tiempo Medio.                                 #
+#   ENTRADA: tiempo: GeoJSON Tiempo.                                       #
 #            cali:   GeoJSON Calificaciones.                               #
 #--------------------------------------------------------------------------#
 def add_time(tiempo, cali):
     for index, tiempo_feature in enumerate(tiempo['features']):
         nombre = tiempo_feature['properties']['nombre']
-        tiempo_medio = tiempo_feature['properties']['tiempo_medio']
+        tiempo = tiempo_feature['properties']['tiempo']
         cali['features'][index]['properties']['nombre'] = nombre
-        cali['features'][index]['properties']['tiempo_medio'] = tiempo_medio
+        cali['features'][index]['properties']['tiempo'] = tiempo
         
     return cali
 #--------------------------------------------------------------------------#
@@ -264,10 +264,10 @@ def main():
     
     # Tiempo medio
     print('Leyendo archivo tiempo_medio...')
-    with open('opendata/tiempo_medio.json','r') as input_file:
+    with open('opendata/tiempo.json','r') as input_file:
         tiempo = json.load(input_file)
         
-    print('Agregando datos de tiempo medio...')
+    print('Agregando datos de tiempo...')
     cali = add_time(tiempo, cali)
     
     # Tráfico
@@ -289,21 +289,22 @@ def main():
     print('Agregando datos de redes sociales...')
     cali = add_tweets(tweets_df, voro_df, cali)
     
-    # Guardar archivos de salida
+    # Guardar los archivos de salida
     print('Guardando puntos de interés...')
     with open('puntos_de_interes.json', 'w') as output_file:
         json.dump(cali, output_file, indent=3)
-        
+    
     print('Guardando voronoi...')
     with open('voronoi.json', 'w') as output_file:
         json.dump(voro, output_file, indent=3)
-        
+      
     # Visualizar la información en mapa web
     print('Generando mapa web...')
     valencia = [39.4561165311493, -0.3545661635]
-    mapa = Map(location = valencia, tiles = 'OpenStreetMap', zoom_start = 13)
+    mapa = Map(location = valencia, tiles = 'OpenStreetMap', zoom_start = 10)
     GeoJson(open('voronoi.json'), name = 'Diagrama de Voronoi').add_to(mapa)
-    GeoJson(open('puntos_de_interes.json'), name='Puntos de Interés').add_to(mapa)
+    GeoJson(open('puntos_de_interes.json'), name = 'Puntos de Interés').add_to(mapa)
+    LayerControl().add_to(mapa)
     mapa.save('valencia.html')
     
     print('Listo')
