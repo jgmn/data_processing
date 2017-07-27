@@ -17,7 +17,7 @@ from geojson import FeatureCollection, Feature, Polygon as PolyJson
 # DESCRIPCIÓN: Filtra un GeoJSON por los puntos de interés, calcula el    #
 #              centroide de los polígonos y cambia el formato de coords.  #
 # PARÁMETROS:                                                             #
-#   ENTRADA: data: GeoJSON que se desea filtrar.                          #
+#   ENTRADA: cali: GeoJSON Calificaciones.                                #
 #   SALIDA:  result: GeoJSON filtrado.                                    #
 #            coords: Coordenadas de result.                               #
 #-------------------------------------------------------------------------#
@@ -61,7 +61,8 @@ def filter_geojson(cali):
             feature['geometry']['type'] = "Point"
             result['features'].append(feature)
 
-    result['crs']['properties']['name'] = "urn:ogc:def:crs:EPSG::4326" 
+    result['crs']['properties']['name'] = "urn:ogc:def:crs:EPSG::4326"
+    
     return result, coords
 #-------------------------------------------------------------------------#
 
@@ -159,9 +160,10 @@ def clip_voronoi(regions, vertices, box):
 #---------------------------ADD_POBL--------------------------------------#
 # DESCRIPCIÓN: Agrega la población total a las calificaciones.            # 
 # PARÁMETROS:                                                             #
-#   ENTRADA: voro: GeoDataFrame Voronoi.                                  #
-#            pobl: GeoDataFrame Población.                                #
+#   ENTRADA: pobl_df: GeoDataFrame Población.                             #
+#            voro_df: GeoDataFrame Voronoi.                               #
 #            cali: GeoJson Calificaciones.                                #
+#   SALIDA:  cali: GeoJson Calificaciones.                                #
 #-------------------------------------------------------------------------#
 def add_pobl(pobl_df, voro_df, cali):
     pobl_df = pobl_df.to_crs({'init': 'epsg:4326'})
@@ -178,9 +180,10 @@ def add_pobl(pobl_df, voro_df, cali):
 #---------------------------ADD_TWEETS-------------------------------------#
 # DESCRIPCIÓN: Agrega la actividad de redes sociales a las calificaciones. # 
 # PARÁMETROS:                                                              #
-#   ENTRADA: tweets: GeoDataFrame Tweets.                                  #
-#            voro:   GeoDataFrame Voronoi.                                 #
-#            cali:   GeoJSON Calificaciones.                               #
+#   ENTRADA: tweets_df: GeoDataFrame Tweets.                               #
+#            voro_df: GeoDataFrame Voronoi.                                #
+#            cali: GeoJSON Calificaciones.                                 #
+#   SALIDA:  cali: GeoJSON Calificaciones.                                  #
 #--------------------------------------------------------------------------#               
 def add_tweets(tweets_df, voro_df, cali):    
     voro_df.crs = tweets_df.crs # Para quitar el warning CRS does not match !
@@ -195,9 +198,10 @@ def add_tweets(tweets_df, voro_df, cali):
 #---------------------------ADD_TRAFFIC------------------------------------#
 # DESCRIPCIÓN: Agrega el tráfico a las calificaciones.                     # 
 # PARÁMETROS:                                                              #
-#   ENTRADA: traficos: Lista de GeoDataFrames de tráfico.                  # 
-#            voro: GeoDataFrame Voronoi.                                   #
+#   ENTRADA: traficos_df: Lista de GeoDataFrames de Tráfico.               # 
+#            voro_df: GeoDataFrame Voronoi.                                #
 #            cali: GeoJSON Calificaciones.                                 #
+#   SALIDA: cali: GeoJSON Calificaciones.                                  #
 #--------------------------------------------------------------------------#
 def add_traffic(traficos_df, voro_df, cali):
     for trafico_df in traficos_df:
@@ -216,7 +220,8 @@ def add_traffic(traficos_df, voro_df, cali):
 # DESCRIPCIÓN: Agrega el tiempo de espera a las calificaciones.            # 
 # PARÁMETROS:                                                              #
 #   ENTRADA: tiempo: GeoJSON Tiempo.                                       #
-#            cali:   GeoJSON Calificaciones.                               #
+#            cali: GeoJSON Calificaciones.                                 #
+#   SALIDA:  cali: GeoJSON Calificaciones.                                 #
 #--------------------------------------------------------------------------#
 def add_time(tiempo, cali):
     for index, tiempo_feature in enumerate(tiempo['features']):
@@ -228,6 +233,42 @@ def add_time(tiempo, cali):
     return cali
 #--------------------------------------------------------------------------#
 
+#-------------------------DEL_CLUSTER_POINTS-------------------------------#
+# DESCRIPCIÓN: Elimina los clusteres de puntos en los puntos de interés.   # 
+# PARÁMETROS:                                                              #
+#   ENTRADA: pdi_df: GeoDataFrame Puntos de Interés.                       #
+#   SALIDA:  pdi_df: GeoDataFrame Puntos de Interés sin clusteres.         #
+#            coords: Coordenadas de los puntos de interés.                 #
+#--------------------------------------------------------------------------#
+def del_cluster_points(pdi_df):
+    coords = []
+    pdi_df = pdi_df.to_crs({'init': 'epsg:25830'})
+    for x in pdi_df.iterrows():
+        dist = []
+        indices = []
+        for y in pdi_df.iterrows():
+            p1 = x[1][1]
+            p2 = y[1][1]
+            d = p1.distance(p2)
+            dist.append(d)
+        pdi_df_copy = pdi_df
+        pdi_df_copy['distancias'] = dist
+        pdi_df_subset = pdi_df_copy[pdi_df_copy['distancias'] <= 150]
+        if not pdi_df_subset.empty:
+            pdi_df_subset['total'] = pdi_df_subset.sum(axis = 1)
+            max_index = pdi_df_subset['total'].idxmax()
+            pdi_df_subset.drop(max_index, inplace = True)
+            indices = list(pdi_df_subset.index.values)
+            if (indices):
+                pdi_df.drop(indices, inplace = True)
+        del pdi_df_copy
+        del pdi_df_subset 
+    
+    del pdi_df['distancias']
+    pdi_df = pdi_df.to_crs({'init': 'epsg:4326'})
+    coords = ([[r[1][1].x, r[1][1].y] for r in pdi_df.iterrows()])
+    return pdi_df, coords
+
 def main():
     # Puntos de interés
     print('Leyendo archivo calificaciones...')
@@ -235,24 +276,17 @@ def main():
         cali = json.load(input_file)
     
     print('Filtrando calificaciones...')
-    cali, coords = filter_geojson(cali)
+    cali, coords = filter_geojson(cali) 
     
-    print('Creando Voronoi...')
+    # Generar Voronoi para el procesamiento de datos
     vor = Voronoi(coords)
-    
-    print('Reconstruyendo puntos infinitos...')
     regions, vertices = voronoi_finite_polygons(vor)
-    
-    print ('Recortando Voronoi...')
     min_x = vor.min_bound[0] - 0.1
     max_x = vor.max_bound[0] + 0.1
     min_y = vor.min_bound[1] - 0.1
     max_y = vor.max_bound[1] + 0.1
-    
     box = Polygon([[min_x, min_y], [min_x, max_y], [max_x, max_y], [max_x, min_y]])
-    
     voro = clip_voronoi(regions, vertices, box)
-    
     voro_df = gpd.GeoDataFrame(gpd.GeoSeries(Polygon(v['geometry']['coordinates'][0]) for v in voro['features']), columns=['geometry'])
     
     # Población
@@ -263,7 +297,7 @@ def main():
     cali = add_pobl(pobl_df, voro_df, cali)
     
     # Tiempo medio
-    print('Leyendo archivo tiempo_medio...')
+    print('Leyendo archivo tiempo...')
     with open('opendata/tiempo.json','r') as input_file:
         tiempo = json.load(input_file)
         
@@ -289,15 +323,33 @@ def main():
     print('Agregando datos de redes sociales...')
     cali = add_tweets(tweets_df, voro_df, cali)
     
-    # Guardar los archivos de salida
+    print('Guardando calificaciones...')
+    with open('calificaciones.json', 'w') as output_file:
+        json.dump(cali, output_file, indent = 3)
+  
+    # Eliminar clúster de puntos
+    print("Eliminando clúster de puntos...")
+    pdi_df = gpd.read_file('calificaciones.json')
+    pdi_df, coords = del_cluster_points(pdi_df)
+    
+    print('Creando Voronoi...')
+    vor = Voronoi(coords)
+    regions, vertices = voronoi_finite_polygons(vor)
+    min_x = vor.min_bound[0] - 0.1
+    max_x = vor.max_bound[0] + 0.1
+    min_y = vor.min_bound[1] - 0.1
+    max_y = vor.max_bound[1] + 0.1
+    box = Polygon([[min_x, min_y], [min_x, max_y], [max_x, max_y], [max_x, min_y]])
+    voro = clip_voronoi(regions, vertices, box)
+    
+    # Guardar archivos para el funcionamiento del algoritmo genético
     print('Guardando puntos de interés...')
-    with open('puntos_de_interes.json', 'w') as output_file:
-        json.dump(cali, output_file, indent=3)
+    pdi_df.to_file('puntos_de_interes.json', driver = "GeoJSON")
     
     print('Guardando voronoi...')
     with open('voronoi.json', 'w') as output_file:
-        json.dump(voro, output_file, indent=3)
-      
+        json.dump(voro, output_file, indent = 3)
+     
     # Visualizar la información en mapa web
     print('Generando mapa web...')
     valencia = [39.4561165311493, -0.3545661635]
@@ -314,6 +366,5 @@ if __name__ == "__main__":
     tiempo_inicial = time()
     main()
     tiempo_final = time()
-    
     tiempo_ejecucion = tiempo_final - tiempo_inicial
     print('Tiempo de ejecución: ', '%.2f'% (tiempo_ejecucion/60), 'minutos')
