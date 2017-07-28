@@ -101,7 +101,7 @@ def clip_voronoi(regions, vertices, box):
 #   ENTRADA: pobl_df: GeoDataFrame Población.                                 #
 #            voro_df: GeoDataFrame Voronoi.                                   #
 #            pdi_df: GeoDataFrame Puntos de Interés.                          #
-#   SALIDA:  cali: GeoJson Calificaciones.                                    #
+#   SALIDA:  pdi_df: GeoDataFrame Puntos de Interés.                          #
 #-----------------------------------------------------------------------------#
 def add_pobl(pobl_df, voro_df, pdi_df):
     pobl_df = pobl_df.to_crs({'init': 'epsg:4326'})
@@ -141,7 +141,7 @@ def add_tweets(tweets_df, voro_df, pdi_df):
 #   ENTRADA: traficos_df: Lista GeoDataFrames Tráfico.                        # 
 #            voro_df: GeoDataFrame Voronoi.                                   #
 #            pdi_df: GeoDataFrame Puntos de Interés.                          #
-#   SALIDA: pdi_df: GeoDataFrame Puntos de Interés.                           #
+#   SALIDA:  pdi_df: GeoDataFrame Puntos de Interés.                          #
 #-----------------------------------------------------------------------------#
 def add_traffic(traficos_df, voro_df, pdi_df):
     for trafico_df in traficos_df:
@@ -196,12 +196,11 @@ def del_cluster_points(pdi_df):
 #-----------------------------------------------------------------------------#
 
 def main():
-    # Paso 1: Eliminar clúster de puntos en base al tiempo mediovque pasan las 
+    # Paso 1: Eliminar clúster de puntos en base al tiempo medio que pasan las 
     # personas en los puntos de interés (PDI). El archivo tiempo.json está 
     # filtrado por los PDI y contiene el nombre y tiempo de los puntos.
     print("Leyendo archivo tiempo...")
-    pdi_df = gpd.read_file('opendata/tiempo.json')
-    pdi_df = pdi_df.sort_index()    
+    pdi_df = gpd.read_file('opendata/tiempo.json')  
     print("Eliminando clúster de puntos...")
     pdi_df, coords = del_cluster_points(pdi_df)
     
@@ -261,9 +260,9 @@ def main():
     print('Listo')
 
 if __name__ == "__main__":
-    pd.options.mode.chained_assignment = None # Para quitar el warning SettingWithCopyWarning
-    warnings.filterwarnings("ignore", category = RuntimeWarning) # Para quitar el warning RuntimeWarning
-    # Calcular tiempo de ejecución
+    pd.options.mode.chained_assignment = None # Para quitar el warning SettingWithCopyWarning.
+    warnings.filterwarnings("ignore", category = RuntimeWarning) # Para quitar el warning RuntimeWarning.
+    # Calcular tiempo de ejecución.
     tiempo_inicial = time()
     main()
     tiempo_final = time()
