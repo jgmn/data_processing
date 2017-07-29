@@ -8,12 +8,14 @@ Date: 23/06/2017.
 
 NOTES
 Before to execute data_processing.py decompress opendata.rar on your folder. 
+
 Also, you need to install some dependencies to run it successfully: 
 - numpy
 - geopandas
 - folium
 - scipy
 - shapely
+
 I strongly recommend you use Anaconda Distribution to avoid errors in the 
 installation of libraries. I know what I'm telling you friend. 
 
